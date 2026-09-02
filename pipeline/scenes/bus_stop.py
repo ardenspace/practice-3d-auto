@@ -110,6 +110,45 @@ def build_puddles(p):
         common.add_cylinder(f"puddle_{i}", r, 0.006, (x, y, 0.103 if y < 3.5 else 0.253), water, vertices=48)
 
 
+def build_lighting(p, frame_start, frame_end):
+    pal, lamp = p["palette"], p["lamp"]
+    spot = common.add_light("lamp_spot", "SPOT", (3.5, 4.2, 4.4), lamp["energy"], pal["amber"],
+                            radius=0.35, spot_size=math.radians(lamp["spot_size_deg"]), spot_blend=lamp["blend"])
+    common.add_light("lamp_fill", "POINT", (3.5, 4.2, 4.3), lamp["fill_energy"], pal["amber"], radius=0.5, volume_factor=0.0)
+    rot = tuple(math.radians(v) for v in p["moon"]["rotation_deg"])
+    common.add_light("moon", "SUN", (0, 0, 20), p["moon"]["energy"], pal["moon"], rotation=rot, radius=0.05, volume_factor=0.3)
+    # 가로등 깜박임: 주기 함수라 클립을 이어 붙여도 끊기지 않는다
+    for frame in range(frame_start, frame_end + 1):
+        t = motion.loop_phase(frame, frame_start, frame_end)
+        spot.data.energy = lamp["energy"] * motion.flicker_factor(t, lamp["flicker_dips"])
+        spot.data.keyframe_insert("energy", frame=frame)
+    fog = p["fog"]
+    common.setup_world_fog(pal["night"], pal["fog"], fog["density"], fog["emission"], fog["emission_strength"],
+                           end=fog["end"], samples=fog["samples"])
+
+
+def build_rain(p, frame_start, frame_end):
+    r = p["rain"]
+    emitter = common.add_plane("rain_emitter", r["emitter_size"], (0, 0, r["emitter_z"]), None)
+    drop = common.add_cylinder("rain_drop", 0.004, 0.35, (0, 0, -50),
+                               common.make_material("rain", (0.8, 0.85, 0.95), roughness=0.1, alpha=0.35), vertices=6)
+    mod = emitter.modifiers.new("rain", "PARTICLE_SYSTEM")
+    ps = mod.particle_system
+    st = ps.settings
+    st.count = r["count"]
+    st.frame_start = frame_start - r["lifetime"]  # 첫 프레임부터 비가 이미 내리고 있게
+    st.frame_end = frame_end
+    st.lifetime = r["lifetime"]
+    st.render_type = "OBJECT"
+    st.instance_object = drop
+    st.particle_size = 1.0
+    st.normal_factor = 0.0
+    st.effector_weights.gravity = 1.0
+    ps.seed = r["seed"]
+    emitter.show_instancer_for_render = False
+    emitter.show_instancer_for_viewport = False
+
+
 def build_cameras(p, frame_start, frame_end):
     cams = {}
     marble = bpy.data.objects["marble_glass"]
@@ -127,6 +166,8 @@ def build(params, frame_start, frame_end, event):
     build_lamp_and_props(params)
     build_background(params)
     build_puddles(params)
+    build_lighting(params, frame_start, frame_end)
+    build_rain(params, frame_start, frame_end)
     return build_cameras(params, frame_start, frame_end)
 
 
