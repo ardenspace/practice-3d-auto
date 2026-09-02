@@ -20,6 +20,21 @@ LAYER_DIST_FAR = 4.5
 # 화면 밖으로 조금 넘치게 만들어 sway가 있어도 평면 가장자리가 프레임에 들어오지 않는다.
 PLANE_MARGIN = 1.08
 DEFAULT_N_LAYERS = 3
+VALID_SPEC_MODES = {"layered", "relief"}
+
+
+def _validate_spec_mode(spec):
+    """mode 키가 있으면서 값이 잘못됐으면 즉시 죽인다.
+
+    render.py도 같은 가드를 두지만(Blender 기동 전), 이 스크립트가 직접 실행되는
+    경로(예: 수동 호출)를 방어하기 위해 여기에도 둔다. 미지정(키 없음)은 v1 스펙으로
+    보고 relief로 해석하는 하위 호환을 유지한다.
+    """
+    mode = spec.get("mode")
+    if mode is not None and mode not in VALID_SPEC_MODES:
+        raise RuntimeError(
+            f"mode는 {sorted(VALID_SPEC_MODES)} 중 하나여야 합니다(또는 생략): {mode!r}"
+        )
 
 
 def parse_args():
@@ -248,6 +263,7 @@ def setup_render(spec, mode):
 
 def main():
     spec, mode = parse_args()
+    _validate_spec_mode(spec)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     frame_end = int(spec["duration_s"] * spec["fps"])
     cam = build_camera(spec, frame_end)

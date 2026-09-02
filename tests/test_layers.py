@@ -71,6 +71,33 @@ def test_farthest_layer_fills_occluded_region_with_plausible_color(tmp_path):
     assert occluded.mean() > 20, "가려졌던 영역이 채워지지 않음(검은 구멍)"
 
 
+def test_middle_layer_alpha_is_opaque_over_nearer_band_back_filled(tmp_path):
+    """back-filled 알파: 레이어 i의 알파는 자기 밴드뿐 아니라 더 가까운 모든 밴드도 덮는다.
+
+    이 계약이 깨지면(예: `split_layers`의 `covered = band_far_index >= far_index`를
+    `== far_index`로 되돌리면) 카메라가 움직여 앞 레이어가 비켜설 때 중간 레이어의
+    알파 잘린 자국이 하드 엣지로 그대로 드러난다(task-7-report.md "알파 — back-filled
+    레이어" 참조). 픽스처는 가로 그라데이션 깊이(왼쪽=멂, 오른쪽=가까움)라 3밴드가
+    좌→우로 원경/중경/전경이 된다.
+    """
+    img, depth = _fixture(tmp_path)
+    meta = json.loads(
+        split_layers(img, depth, tmp_path / "layers", n_layers=3).read_text()
+    )
+
+    mid = Image.open(meta["layers"][1]["png"])  # 중경(index 1)
+    assert mid.mode == "RGBA"
+    alpha = np.array(mid)[:, :, 3]
+
+    # 오른쪽 끝은 전경(레이어 0)의 밴드 — 중경 레이어 "자기 밴드" 밖이다.
+    width = alpha.shape[1]
+    foreground_band_column = alpha[:, int(width * 0.95)]
+    assert foreground_band_column.min() == 255, (
+        "중경 레이어의 알파가 더 가까운 밴드(전경)에서 불투명하지 않음"
+        " — back-filled 알파 계약 위반"
+    )
+
+
 def test_layer_pngs_keep_source_resolution(tmp_path):
     img, depth = _fixture(tmp_path)
     meta = json.loads(split_layers(img, depth, tmp_path / "layers").read_text())

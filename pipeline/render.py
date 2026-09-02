@@ -10,6 +10,19 @@ from pipeline.layers import layers_json_path, split_layers
 
 SCENE_SCRIPT = PROJECT_ROOT / "pipeline" / "blender" / "parallax_scene.py"
 DEFAULT_N_LAYERS = 3
+VALID_SPEC_MODES = {"layered", "relief"}
+
+
+def _validate_spec_mode(spec: dict) -> None:
+    """mode 키가 있으면서 값이 잘못됐으면 즉시 죽인다(오타가 조용히 relief로 새지 않게).
+
+    미지정(키 없음)은 v1 스펙으로 보고 relief로 해석하는 하위 호환을 유지한다.
+    """
+    mode = spec.get("mode")
+    if mode is not None and mode not in VALID_SPEC_MODES:
+        raise ValueError(
+            f"mode는 {sorted(VALID_SPEC_MODES)} 중 하나여야 합니다(또는 생략): {mode!r}"
+        )
 
 
 def _prepare_layers(spec: dict) -> Path:
@@ -33,6 +46,7 @@ def render_shot(spec_path: Path, mode: str) -> Path:
         raise ValueError(f"mode는 preview|full 중 하나여야 합니다: {mode}")
 
     spec = json.loads(Path(spec_path).read_text())
+    _validate_spec_mode(spec)
     suffix = "_preview.png" if mode == "preview" else ".mp4"
     out_path = (PROJECT_ROOT / spec["out_dir"] / f"{spec['name']}{suffix}").resolve()
 
