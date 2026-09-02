@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+episodes/*/renders/
+episodes/*/assets/
+library/music/
+library/ambience/
+library/hdri/
+.DS_Store
