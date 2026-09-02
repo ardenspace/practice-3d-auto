@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -25,3 +26,12 @@ def test_render_clip_still_is_idempotent(tmp_path):
     mtime = first.stat().st_mtime
     second = render_clip("bus_stop", "wide", out, resolution=(160, 90), samples=4, still=True)
     assert second == first and second.stat().st_mtime == mtime
+
+
+def test_render_clip_leaves_no_partial_output_on_failed_render(tmp_path):
+    out = tmp_path / "wide.mp4"
+    with pytest.raises(subprocess.CalledProcessError):
+        render_clip("bus_stop", "no_such_camera", out, resolution=(160, 90), samples=4,
+                    frame_start=1, frame_end=1)
+    assert not out.exists()
+    assert not (out.parent / f".{out.name}.tmp").exists()
