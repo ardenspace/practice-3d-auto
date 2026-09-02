@@ -12,4 +12,16 @@ pytest
 # (--no-deps 없이 설치하면 pillow가 9.5.0으로 다운그레이드되어 tests/test_depth.py가
 # 깨질 수 있다 — pipeline/layers.py의 _get_lama() 함수가 numpy 버전을 확인하고
 # 이 경우 명확한 에러를 던진다.)
+#
+# tests/test_layers.py의 torch.jit.load(big-lama.pt) 실패(NotImplementedError: CUDA
+# backend)는 torch 버전과 무관하다 — 2026-09-02 실측: torch 2.2.2/2.6.0/2.7.1/2.8.0/
+# 2.13.0(Python 3.12에서 설치 가능한 사실상 전 범위) 모두 동일하게 실패했다. 원인은
+# 캐시된 체크포인트(~/.cache/torch/hub/checkpoints/big-lama.pt)의 data.pkl에 저장 시점
+# 디바이스가 "cuda:0"로 박혀 있고, torch.jit.load()가 map_location 없이 호출되면 저장된
+# 디바이스로 그대로 복원을 시도하기 때문이다(simple_lama_inpainting/models/model.py의
+# `torch.jit.load(model_path)` 호출부, --no-deps로 설치되는 서드파티 코드라 이 requirements.txt
+# 범위에서는 고칠 수 없다). CUDA가 없는 이 머신(macOS, CPU/MPS만 등록됨)에서는 torch 버전을
+# 아무리 바꿔도 재현된다 — 실제 수정은 pipeline/layers.py의 _get_lama()에서 SimpleLama
+# 인스턴스화 전에 torch.jit.load를 map_location="cpu" 기본값으로 감싸는 몽키패치(또는 동급
+# 조치)가 필요하며, 이는 pipeline 코드 변경이라 이번 venv/requirements.txt 범위를 벗어난다.
 simple-lama-inpainting
