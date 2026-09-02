@@ -1,0 +1,14 @@
+{
+  "image": "episodes/pilot-test/assets/source.png",
+  "depth": "episodes/pilot-test/assets/depth.png",
+  "out_dir": "episodes/pilot-test/renders",
+  "name": "shot01_layered",
+  "mode": "layered",
+  "n_layers": 5,
+  "resolution": [1920, 1080],
+  "fps": 24,
+  "duration_s": 10,
+  "depth_strength": 0.35,
+  "camera": {"move": "push_in", "amplitude": 0.7, "sway": 0.06, "loop": false},
+  "fog_density": 0.06
+}

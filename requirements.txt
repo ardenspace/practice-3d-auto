@@ -1,13 +1,15 @@
 torch
 transformers
-pillow
-numpy
+pillow>=10
+numpy>=2
 opencv-python-headless
 pytest
 # simple-lama-inpainting은 setup.py에 numpy<2.0/pillow<10.0/opencv-python<5.0을 못박아 뒀다
-# (2023년 배포 이후 갱신 안 됨). 그대로 설치하면 위 pillow/numpy/opencv-python-headless가
-# 강제로 다운그레이드되고, pillow 다운그레이드는 depth.py가 저장하는 16비트 PNG(I;16 모드)를
-# 깨뜨린다(tests/test_depth.py로 확인). 실제 코드가 요구하는 건 torch/numpy/PIL/cv2의 흔한
-# API뿐이라 최신 버전에서도 동작을 확인했다 — 반드시 `--no-deps`로 설치할 것:
+# (2023년 배포 이후 갱신 안 됨). 위 하한(numpy>=2, pillow>=10)이 충돌 에러를 명시적으로
+# 발생시키도록 강제한다. simple-lama-inpainting의 코드는 torch/numpy/PIL/cv2의 흔한 API만
+# 쓰기 때문에, `--no-deps`로 설치하면 기존 최신 버전들과 함께 정상 동작한다:
 #   uv pip install --no-deps simple-lama-inpainting
+# (--no-deps 없이 설치하면 pillow가 9.5.0으로 다운그레이드되어 tests/test_depth.py가
+# 깨질 수 있다 — pipeline/layers.py의 _get_lama() 함수가 numpy 버전을 확인하고
+# 이 경우 명확한 에러를 던진다.)
 simple-lama-inpainting

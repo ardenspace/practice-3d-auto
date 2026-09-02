@@ -30,6 +30,21 @@ def _get_lama():
     """LaMa 인페인팅 모델을 지연 로드 싱글턴으로 관리한다(depth.py의 _get_pipe와 같은 패턴)."""
     global _lama
     if _lama is None:
+        # simple-lama-inpainting을 --no-deps로 설치했더라도 numpy가 다운그레이드되었을 수 있다.
+        # 이 경우 명확한 에러를 던져 관리자가 상황을 인식하도록 한다.
+        import numpy as np
+        major_ver = int(np.__version__.split('.')[0])
+        if major_ver < 2:
+            raise RuntimeError(
+                f"numpy 버전 {np.__version__}는 2.0 미만입니다. "
+                "이는 simple-lama-inpainting을 --no-deps 없이 설치했을 때 발생합니다.\n"
+                "다음과 같이 복구하세요:\n"
+                "  1. numpy>=2를 복원: uv pip install 'numpy>=2'\n"
+                "  2. simple-lama-inpainting을 --no-deps로 재설치: "
+                "uv pip install --no-deps simple-lama-inpainting\n"
+                "자세한 내용은 requirements.txt의 주석을 참조하세요."
+            )
+
         from simple_lama_inpainting import SimpleLama
 
         _lama = SimpleLama()
