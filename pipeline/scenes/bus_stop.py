@@ -15,23 +15,29 @@ import motion  # noqa: E402
 
 PARAMS = {
     "palette": {
-        "night": (0.010, 0.015, 0.030),   # 하늘·배경
-        "asphalt": (0.030, 0.033, 0.040),
-        "concrete": (0.070, 0.072, 0.080),
+        "night": (0.010, 0.015, 0.030),   # 지면 알베도
+        "sky": (0.0016, 0.0022, 0.0045),  # 월드 배경. AgX 가 어두운 값을 크게 들어 올리므로 지면 알베도보다 훨씬 낮다
+        "asphalt": (0.042, 0.045, 0.055),
+        "concrete": (0.105, 0.108, 0.118),
         "steel": (0.120, 0.125, 0.140),
         "wood": (0.240, 0.150, 0.080),
         "amber": (1.000, 0.620, 0.300),   # 가로등
         "fog": (0.550, 0.650, 0.800),
         "moon": (0.550, 0.650, 1.000),
     },
-    "fog": {"density": 0.025, "emission_strength": 0.004, "emission": (0.35, 0.45, 0.65), "end": 80.0, "samples": 64},
-    "lamp": {"energy": 2500.0, "fill_energy": 150.0, "spot_size_deg": 120.0, "blend": 0.6, "head_emission": 40.0,
+    "fog": {"density": 0.030, "emission_strength": 0.0015, "emission": (0.35, 0.45, 0.65), "end": 80.0,
+            "samples": 128, "tile_size": "2"},
+    "lamp": {"energy": 4000.0, "fill_energy": 250.0, "spot_size_deg": 104.0, "blend": 0.62, "head_emission": 40.0,
+             # 조명은 기둥 위(4.20)와 전구 아래쪽 끝(4.50-0.18=4.32) 사이에 놓아야 한다.
+             # 기둥이나 전구 안에 들어가면 자기 형상에 가려 빛이 한 줄기도 빠져나오지 못한다.
+             "post_height": 4.20, "head_z": 4.50, "head_radius": 0.18,
+             "spot_z": 4.40, "spot_radius": 0.05, "fill_z": 4.40, "fill_radius": 0.08,
              "flicker_dips": [(0.31, 0.004, 0.55), (0.33, 0.003, 0.35), (0.72, 0.005, 0.45)]},
-    "moon": {"energy": 0.08, "rotation_deg": (50.0, 0.0, -30.0)},
-    "glare": {"glare_threshold": 1.0, "glare_strength": 0.25, "glare_size": 0.6},
+    "moon": {"energy": 0.035, "volume_factor": 0.0, "rotation_deg": (50.0, 0.0, -30.0)},
+    "glare": {"glare_threshold": 0.6, "glare_strength": 0.45, "glare_size": 0.7},
     "rain": {"count": 4000, "lifetime": 40, "emitter_z": 9.0, "emitter_size": 40.0, "seed": 7},
     "cameras": {
-        "wide":    {"location": (-1.0, -9.0, 1.6), "target": (0.5, 4.5, 1.3), "lens": 32, "fstop": 2.8,
+        "wide":    {"location": (-0.2, -8.2, 1.50), "target": (1.5, 4.6, 1.55), "lens": 35, "fstop": 2.8,
                     "amplitudes": (0.6, 0.0, 0.08), "harmonics": (1, 1, 2)},
         "shelter": {"location": (-1.2, 5.3, 1.5), "target": (30.0, 2.0, 1.2), "lens": 35, "fstop": 2.0,
                     "amplitudes": (0.4, 0.0, 0.03), "harmonics": (1, 1, 2)},
@@ -46,9 +52,9 @@ PARAMS = {
 
 def build_ground_and_road(p):
     pal = p["palette"]
-    common.add_plane("ground", 200.0, (0, 0, 0), common.make_material("ground", pal["night"], roughness=0.5))
-    common.add_box("road", (120.0, 7.0, 0.10), (0, 0, 0.05), common.make_material("asphalt", pal["asphalt"], roughness=0.25), bevel=0.0)
-    common.add_box("sidewalk", (30.0, 3.5, 0.25), (0, 5.25, 0.125), common.make_material("concrete", pal["concrete"], roughness=0.35), bevel=0.02)
+    common.add_plane("ground", 200.0, (0, 0, 0), common.make_material("ground", pal["night"], roughness=0.25))
+    common.add_box("road", (120.0, 7.0, 0.10), (0, 0, 0.05), common.make_material("asphalt", pal["asphalt"], roughness=0.07), bevel=0.0)
+    common.add_box("sidewalk", (30.0, 3.5, 0.25), (0, 5.25, 0.125), common.make_material("concrete", pal["concrete"], roughness=0.28), bevel=0.02)
     # 도로 가운데 점선
     dash = common.make_material("dash", (0.35, 0.33, 0.25), roughness=0.5)
     for i in range(-14, 15):
@@ -72,9 +78,10 @@ def build_shelter(p):
 def build_lamp_and_props(p):
     pal = p["palette"]
     steel = bpy.data.materials["steel"]
-    common.add_cylinder("lamp_post", 0.06, 4.4, (3.5, 4.2, 2.2), steel)
+    common.add_cylinder("lamp_post", 0.06, p["lamp"]["post_height"], (3.5, 4.2, p["lamp"]["post_height"] / 2), steel)
     head = common.make_material("lamp_head", pal["amber"], emission=pal["amber"], emission_strength=p["lamp"]["head_emission"])
-    common.add_sphere("lamp_head", 0.18, (3.5, 4.2, 4.5), head)
+    bulb = common.add_sphere("lamp_head", p["lamp"]["head_radius"], (3.5, 4.2, p["lamp"]["head_z"]), head)
+    bulb.visible_shadow = False  # 전구가 자기 빛을 가리지 않게 한다
     # 노선 표지판: 기둥 + 판. 글자는 읽을 수 없는 기호 대신 얇은 막대 세 개
     common.add_cylinder("sign_pole", 0.03, 2.4, (-2.5, 4.1, 1.2), steel)
     common.add_box("sign_board", (0.5, 0.03, 0.7), (-2.5, 4.1, 2.2), common.make_material("sign", (0.08, 0.10, 0.14), roughness=0.5), bevel=0.01)
@@ -92,10 +99,13 @@ def build_lamp_and_props(p):
 def build_background(p):
     pal = p["palette"]
     dark = common.make_material("silhouette", (0.012, 0.014, 0.020), roughness=0.9)
-    for i, (x, y, h) in enumerate(((-9, 9, 7), (-4, 12, 9), (6, 11, 8), (12, 9, 6.5))):
-        common.add_cylinder(f"trunk_{i}", 0.12, h, (x, y, h / 2), dark)
-        for j, (r, z) in enumerate(((1.4, h * 0.55), (1.1, h * 0.75), (0.7, h * 0.92))):
-            common.add_sphere(f"canopy_{i}_{j}", r, (x, y, z), dark)
+    # 설계의 "가늘고 긴 나무 실루엣". 구를 쌓으면 구슬을 꿴 모양이 되므로,
+    # 구 하나를 세로로 늘인 타원체로 사이프러스 같은 실루엣을 만든다.
+    for i, (x, y, h, w) in enumerate(((-9, 9, 8.0, 0.62), (-4, 12, 10.0, 0.70),
+                                      (6, 11, 9.0, 0.55), (12, 9, 7.5, 0.66))):
+        common.add_cylinder(f"trunk_{i}", 0.09, h, (x, y, h / 2), dark)
+        canopy = common.add_sphere(f"canopy_{i}", 1.0, (x, y, h * 0.62), dark)
+        canopy.scale = (w, w, h * 0.33)
     for i, x in enumerate((-14.0, 14.0)):
         common.add_cylinder(f"pole_{i}", 0.10, 7.0, (x, 6.5, 3.5), dark)
         common.add_box(f"crossbar_{i}", (1.6, 0.08, 0.08), (x, 6.5, 6.6), dark, bevel=0.0)
@@ -112,19 +122,21 @@ def build_puddles(p):
 
 def build_lighting(p, frame_start, frame_end):
     pal, lamp = p["palette"], p["lamp"]
-    spot = common.add_light("lamp_spot", "SPOT", (3.5, 4.2, 4.4), lamp["energy"], pal["amber"],
-                            radius=0.35, spot_size=math.radians(lamp["spot_size_deg"]), spot_blend=lamp["blend"])
-    common.add_light("lamp_fill", "POINT", (3.5, 4.2, 4.3), lamp["fill_energy"], pal["amber"], radius=0.5, volume_factor=0.0)
+    spot = common.add_light("lamp_spot", "SPOT", (3.5, 4.2, lamp["spot_z"]), lamp["energy"], pal["amber"],
+                            radius=lamp["spot_radius"], spot_size=math.radians(lamp["spot_size_deg"]),
+                            spot_blend=lamp["blend"])
+    common.add_light("lamp_fill", "POINT", (3.5, 4.2, lamp["fill_z"]), lamp["fill_energy"], pal["amber"],
+                     radius=lamp["fill_radius"], volume_factor=0.0)
     rot = tuple(math.radians(v) for v in p["moon"]["rotation_deg"])
-    common.add_light("moon", "SUN", (0, 0, 20), p["moon"]["energy"], pal["moon"], rotation=rot, radius=0.05, volume_factor=0.3)
+    common.add_light("moon", "SUN", (0, 0, 20), p["moon"]["energy"], pal["moon"], rotation=rot, radius=0.05, volume_factor=p["moon"]["volume_factor"])
     # 가로등 깜박임: 주기 함수라 클립을 이어 붙여도 끊기지 않는다
     for frame in range(frame_start, frame_end + 1):
         t = motion.loop_phase(frame, frame_start, frame_end)
         spot.data.energy = lamp["energy"] * motion.flicker_factor(t, lamp["flicker_dips"])
         spot.data.keyframe_insert("energy", frame=frame)
     fog = p["fog"]
-    common.setup_world_fog(pal["night"], pal["fog"], fog["density"], fog["emission"], fog["emission_strength"],
-                           end=fog["end"], samples=fog["samples"])
+    common.setup_world_fog(pal["sky"], pal["fog"], fog["density"], fog["emission"], fog["emission_strength"],
+                           end=fog["end"], samples=fog["samples"], tile_size=fog["tile_size"])
 
 
 def build_rain(p, frame_start, frame_end):

@@ -152,7 +152,7 @@ def keyframe_loop_motion(obj, base, amplitudes, frame_start, frame_end, harmonic
 
 
 def setup_world_fog(background, fog_color, density, emission_color, emission_strength,
-                    end=80.0, samples=64):
+                    end=80.0, samples=64, tile_size="4"):
     scene = bpy.context.scene
     world = bpy.data.worlds.new("world")
     scene.world = world
@@ -165,7 +165,7 @@ def setup_world_fog(background, fog_color, density, emission_color, emission_str
     vol.inputs["Emission Strength"].default_value = emission_strength
     links.new(vol.outputs["Volume"], nodes["World Output"].inputs["Volume"])
     ev = scene.eevee
-    ev.volumetric_tile_size = "4"
+    ev.volumetric_tile_size = tile_size  # 낮을수록 froxel 이 촘촘하다. "4"는 빛기둥에 격자 무늬가 남는다
     ev.volumetric_samples = samples
     ev.use_volumetric_shadows = True
     ev.volumetric_end = end
