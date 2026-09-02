@@ -19,10 +19,21 @@ import cv2
 import numpy as np
 from PIL import Image
 
-INPAINT_RADIUS = 8  # cv2.inpaint(TELEA) 반경(px)
-INPAINT_SCALE = 0.25  # 인페인팅을 수행하는 축소 배율(아래 _fill_occlusions 주석 참조)
 FEATHER_RATIO = 0.004  # 이미지 긴 변 대비 페더/디레이트 폭
 FEATHER_MIN_PX = 2
+HOLE_DILATE_PX = 3  # 인페인팅 마스크를 살짝 팽창시켜 경계 잔티를 없애는 폭(px)
+
+_lama = None
+
+
+def _get_lama():
+    """LaMa 인페인팅 모델을 지연 로드 싱글턴으로 관리한다(depth.py의 _get_pipe와 같은 패턴)."""
+    global _lama
+    if _lama is None:
+        from simple_lama_inpainting import SimpleLama
+
+        _lama = SimpleLama()
+    return _lama
 
 
 def layers_json_path(image_path: Path, n_layers: int) -> Path:
@@ -58,29 +69,24 @@ def _soft_alpha(hard_mask: np.ndarray, feather: int) -> np.ndarray:
 
 
 def _fill_occlusions(rgb: np.ndarray, hole_mask: np.ndarray, feather: int) -> np.ndarray:
-    """더 가까운 밴드가 가리던 영역을 인페인팅으로 채우고 이음매를 살짝 흐린다.
+    """더 가까운 밴드가 가리던 영역을 LaMa로 채우고 이음매를 살짝 흐린다.
 
-    원본 해상도에서 바로 TELEA를 돌리면 전경이 차지하던 큰 구멍이 경계 색을 길게
-    끌어당긴 흰 줄무늬로 메워진다(파일럿 이미지에서 확인). 축소본에서 채우면 같은
-    반경이 상대적으로 훨씬 넓게 퍼져 매끈한 배경 색조로 메워지고, 다시 키우면서
-    자연스럽게 흐려져 초점이 나간 배경처럼 보인다. 드러나는 자리는 어차피 원본에
-    없던 정보이므로 구조를 지어내기보다 부드럽게 뭉개는 편이 덜 튄다.
+    이전에는 원본 해상도 cv2.inpaint(TELEA)가 흰 줄무늬를 남기고, 0.25배 축소 우회는
+    구멍을 안개 톤으로 뭉갰다(둘 다 파일럿 이미지에서 확인, task-7-report.md 참조).
+    LaMa는 구조 인지(structure-aware) 채움이라 축소 없이 원본 해상도에서 돌려도
+    윤곽·질감을 지어내며, 이 경우 뭉갬 대신 "그럴듯한 연속"에 더 가깝다.
+    마스크는 살짝 팽창시켜 원본과의 경계 잔티를 없앤다.
     """
     if not hole_mask.any():
         return rgb
 
-    height, width = rgb.shape[:2]
-    small_size = (
-        max(8, int(width * INPAINT_SCALE)),
-        max(8, int(height * INPAINT_SCALE)),
+    mask = cv2.dilate(
+        hole_mask.astype(np.uint8) * 255, np.ones((HOLE_DILATE_PX, HOLE_DILATE_PX), np.uint8)
     )
-    small = cv2.resize(rgb, small_size, interpolation=cv2.INTER_AREA)
-    small_mask = cv2.resize(
-        hole_mask.astype(np.uint8) * 255, small_size, interpolation=cv2.INTER_NEAREST
-    )
-    small_mask = cv2.dilate(small_mask, np.ones((3, 3), np.uint8))
-    filled_small = cv2.inpaint(small, small_mask, INPAINT_RADIUS, cv2.INPAINT_TELEA)
-    filled = cv2.resize(filled_small, (width, height), interpolation=cv2.INTER_LINEAR)
+    filled_img = _get_lama()(Image.fromarray(rgb, mode="RGB"), Image.fromarray(mask, mode="L"))
+    filled = np.array(filled_img.convert("RGB"), dtype=np.uint8)
+    if filled.shape[:2] != rgb.shape[:2]:  # LaMa는 내부적으로 8의 배수로 패딩/크롭할 수 있다
+        filled = cv2.resize(filled, (rgb.shape[1], rgb.shape[0]), interpolation=cv2.INTER_LINEAR)
 
     # 구멍 안쪽은 채운 값, 바깥은 원본. 경계는 페더 폭만큼 부드럽게 섞는다.
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * feather + 1,) * 2)
@@ -90,6 +96,31 @@ def _fill_occlusions(rgb: np.ndarray, hole_mask: np.ndarray, feather: int) -> np
         :, :, None
     ]
     return (rgb * (1.0 - weight) + filled * weight).astype(np.uint8)
+
+
+def _extend_ring_color(content: np.ndarray, covered: np.ndarray) -> np.ndarray:
+    """covered 밖(페더 링)의 RGB를 covered 안 최근접 픽셀 색으로 확장한다.
+
+    페더 링(알파 0<α<255 구간)의 RGB가 배경 원본 픽셀 그대로 남으면, 카메라가 움직여
+    앞 레이어가 비켜서지 않아도 반투명 테두리가 "레이어에 없던 배경 조각"을 함께
+    끌고 다니는 유령 윤곽이 생긴다(파일럿에서 확인). covered 영역에서 가장 가까운
+    픽셀의 색을 그대로 복사해 링이 레이어 자신의 색으로 보이게 한다.
+
+    최근접 covered 픽셀 색 복사를 택했다(대안: 마스크를 ~covered로 준 LaMa 인페인팅).
+    링은 feather px(기본 2~8px) 폭의 얇은 띠라 구조를 새로 지어낼 필요가 없고, 레이어당
+    LaMa 호출을 하나 더 늘리지 않아 총 처리 시간이 그대로 유지된다.
+    """
+    if not covered.any() or covered.all():
+        return content
+
+    # src==0 픽셀(covered)을 시드로 해서, 나머지 픽셀에 최근접 시드의 라벨을 매긴다.
+    src = (~covered).astype(np.uint8)
+    _, labels = cv2.distanceTransformWithLabels(
+        src, cv2.DIST_L2, cv2.DIST_MASK_PRECISE, labelType=cv2.DIST_LABEL_PIXEL
+    )
+    seed_ys, seed_xs = np.nonzero(covered)
+    nearest = content[seed_ys[labels - 1], seed_xs[labels - 1]]
+    return np.where(covered[:, :, None], content, nearest).astype(np.uint8)
 
 
 def split_layers(
@@ -141,6 +172,7 @@ def split_layers(
             # 최원경은 화면 전체를 구멍 없이 덮는다(알파 불필요)
             layer_img = Image.fromarray(content, mode="RGB")
         else:
+            content = _extend_ring_color(content, covered)  # 페더 링 색을 배경이 아닌 레이어 색으로
             alpha = _soft_alpha(covered, feather)
             layer_img = Image.fromarray(
                 np.dstack([content, alpha]).astype(np.uint8), mode="RGBA"

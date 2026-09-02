@@ -4,3 +4,10 @@ pillow
 numpy
 opencv-python-headless
 pytest
+# simple-lama-inpainting은 setup.py에 numpy<2.0/pillow<10.0/opencv-python<5.0을 못박아 뒀다
+# (2023년 배포 이후 갱신 안 됨). 그대로 설치하면 위 pillow/numpy/opencv-python-headless가
+# 강제로 다운그레이드되고, pillow 다운그레이드는 depth.py가 저장하는 16비트 PNG(I;16 모드)를
+# 깨뜨린다(tests/test_depth.py로 확인). 실제 코드가 요구하는 건 torch/numpy/PIL/cv2의 흔한
+# API뿐이라 최신 버전에서도 동작을 확인했다 — 반드시 `--no-deps`로 설치할 것:
+#   uv pip install --no-deps simple-lama-inpainting
+simple-lama-inpainting
