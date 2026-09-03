@@ -23,7 +23,7 @@ def test_common_helpers_render_a_still(tmp_path):
     img = Image.open(out)
     assert img.size == (160, 90)
     # 완전히 검거나 완전히 흰 이미지는 실패로 본다(조명·안개·컴포지터 중 무언가가 죽은 것)
-    mean = sum(img.convert("L").getdata()) / (160 * 90)
+    mean = sum(img.convert("L").get_flattened_data()) / (160 * 90)
     assert 3 < mean < 250
 
 
