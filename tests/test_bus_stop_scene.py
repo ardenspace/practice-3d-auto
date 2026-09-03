@@ -49,6 +49,12 @@ def test_bus_stop_scene_is_deterministic():
     assert first["objects"] == second["objects"]
 
 
+def test_bus_event_adds_bus_and_headlights():
+    info = check_scene("bus_stop", camera="wide", event="bus", frame_end=8)
+    assert {"bus", "bus_body", "bus_tail_l", "bus_tail_r"} <= set(info["objects"])
+    assert {"bus_head_l", "bus_head_r"} <= set(info["lights"])
+
+
 def test_short_animation_writes_mp4(tmp_path):
     out = render_clip("bus_stop", "wide", tmp_path / "wide.mp4", frame_start=1, frame_end=6,
                       resolution=(160, 90), fps=12, samples=4)

@@ -466,6 +466,33 @@ def build_rain(p, frame_start, frame_end):
     emitter.show_instancer_for_viewport = False
 
 
+def build_bus(p, frame_start, frame_end):
+    b = p["bus"]
+    road_top = _road_top(p)
+    root = bpy.data.objects.new("bus", None)
+    bpy.context.scene.collection.objects.link(root)
+    body_mat = common.make_material("bus_body", (0.05, 0.06, 0.08), roughness=0.35)
+    body = common.add_box("bus_body", (10.0, 2.6, 3.0), (0, 0, road_top + 1.5), body_mat, bevel=0.08)
+    win = common.make_material("bus_window", (0.6, 0.55, 0.4), emission=(1.0, 0.85, 0.6), emission_strength=2.0)
+    windows = common.add_box("bus_windows", (8.5, 2.64, 1.0), (0.2, 0, road_top + 2.2), win, bevel=0.0)
+    tail = common.make_material("bus_tail", (0.8, 0.05, 0.02), emission=(1.0, 0.08, 0.03), emission_strength=25.0)
+    tail_l = common.add_box("bus_tail_l", (0.05, 0.25, 0.18), (-5.03, 0.9, road_top + 0.9), tail, bevel=0.0)
+    tail_r = common.add_box("bus_tail_r", (0.05, 0.25, 0.18), (-5.03, -0.9, road_top + 0.9), tail, bevel=0.0)
+    parts = [body, windows, tail_l, tail_r]
+    # 전조등: 진행 방향(+x)을 향하는 스폿. 스폿은 로컬 -Z를 비추므로 Y축 -90도 회전
+    for name, y in (("bus_head_l", 0.9), ("bus_head_r", -0.9)):
+        parts.append(common.add_light(name, "SPOT", (5.05, y, road_top + 0.9), b["headlight_energy"], (1.0, 0.9, 0.7),
+                                      rotation=(0, math.radians(-90), 0), radius=0.15,
+                                      spot_size=math.radians(50), spot_blend=0.4, volume_factor=1.5))
+    for part in parts:
+        part.parent = root
+    # 등속 통과: smoothstep을 쓰지 않는다(버스는 멈추지 않는다)
+    for frame in range(frame_start, frame_end + 1):
+        t = (frame - frame_start) / max(frame_end - frame_start, 1)
+        root.location = (b["x_start"] + (b["x_end"] - b["x_start"]) * t, b["y"], 0.0)
+        root.keyframe_insert("location", frame=frame)
+
+
 def build_cameras(p, frame_start, frame_end):
     cams = {}
     marble = bpy.data.objects["marble_glass"]
@@ -497,6 +524,8 @@ def build(params, frame_start, frame_end, event):
     build_leaves(params)
     build_lighting(params, frame_start, frame_end)
     build_rain(params, frame_start, frame_end)
+    if event == "bus":
+        build_bus(params, frame_start, frame_end)
     return build_cameras(params, frame_start, frame_end)
 
 
