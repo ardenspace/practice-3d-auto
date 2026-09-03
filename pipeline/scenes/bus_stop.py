@@ -29,8 +29,9 @@ PARAMS = {
     "fog": {"density": 0.030, "emission_strength": 0.0015, "emission": (0.35, 0.45, 0.65), "end": 80.0,
             "samples": 128, "tile_size": "2"},
     "lamp": {"energy": 4000.0, "fill_energy": 250.0, "spot_size_deg": 104.0, "blend": 0.62, "head_emission": 40.0,
-             # 조명은 기둥 위(4.20)와 전구 아래쪽 끝(4.50-0.18=4.32) 사이에 놓아야 한다.
-             # 기둥이나 전구 안에 들어가면 자기 형상에 가려 빛이 한 줄기도 빠져나오지 못한다.
+             # 조명은 기둥(z 0~4.20) 안에 들어가면 안 된다 — 자기 형상에 가려 빛이 못 빠져나온다.
+             # spot_z/fill_z(4.40)는 전구 구체(z 4.32~4.68) 안쪽이지만, build_lamp_and_props 에서
+             # 전구에 bulb.visible_shadow = False 를 설정해 자기 그림자를 끄기 때문에 문제 없다.
              "post_height": 4.20, "head_z": 4.50, "head_radius": 0.18,
              "spot_z": 4.40, "spot_radius": 0.05, "fill_z": 4.40, "fill_radius": 0.08,
              "flicker_dips": [(0.31, 0.004, 0.55), (0.33, 0.003, 0.35), (0.72, 0.005, 0.45)]},
@@ -59,6 +60,13 @@ PARAMS = {
         "side_glass": 0.01,  # 얇은 축 x=0.03 → 절반 0.015
         "curb": 0.03,        # 얇은 축 z=0.15 → 절반 0.075
     },
+    "ground": {
+        # 도로·인도 상면 높이는 여러 소품(연석·이음선·배수구·볼라드·낙엽·쓰레기통)이 함께
+        # 참조하므로 여기 한 곳에서만 정의하고, 아래 _road_top()/_sidewalk_top() 으로 계산한다.
+        "road_size": (120.0, 7.0, 0.10), "road_center": (0.0, 0.0, 0.05),
+        "sidewalk_size": (30.0, 3.5, 0.25), "sidewalk_center": (0.0, 5.25, 0.125),
+    },
+    "bin": {"radius": 0.22, "height": 0.75},
     "curb": {"size": (30.0, 0.20, 0.15), "y": 3.5, "z": 0.175},
     "sidewalk_joints": {
         # 와이드 카메라 시야 안쪽만. 도형 수가 늘지 않게 격자 간격을 넉넉히 둔다.
@@ -127,14 +135,29 @@ def _align_to(direction):
     return (0.0, theta, psi)
 
 
+def _road_top(p):
+    g = p["ground"]
+    return g["road_center"][2] + g["road_size"][2] / 2
+
+
+def _sidewalk_top(p):
+    g = p["ground"]
+    return g["sidewalk_center"][2] + g["sidewalk_size"][2] / 2
+
+
+def _bin_top(p):
+    return _sidewalk_top(p) + p["bin"]["height"]
+
+
 def build_ground_and_road(p):
     pal = p["palette"]
     bevel = p["bevel"]
+    g = p["ground"]
     common.add_plane("ground", 200.0, (0, 0, 0), common.make_material("ground", pal["night"], roughness=0.25))
     asphalt = common.make_material("asphalt", pal["asphalt"], roughness=0.07)
-    common.add_box("road", (120.0, 7.0, 0.10), (0, 0, 0.05), asphalt, bevel=bevel["road"])
+    common.add_box("road", g["road_size"], g["road_center"], asphalt, bevel=bevel["road"])
     concrete = common.make_material("concrete", pal["concrete"], roughness=0.28)
-    common.add_box("sidewalk", (30.0, 3.5, 0.25), (0, 5.25, 0.125), concrete, bevel=bevel["sidewalk"])
+    common.add_box("sidewalk", g["sidewalk_size"], g["sidewalk_center"], concrete, bevel=bevel["sidewalk"])
     common.add_procedural_roughness(asphalt, **p["material_variation"]["asphalt"])
     common.add_procedural_roughness(concrete, **p["material_variation"]["concrete"])
     # 도로 가운데 점선
@@ -154,7 +177,7 @@ def _build_curb(p, concrete):
 
 def _build_sidewalk_joints(p, concrete):
     j = p["sidewalk_joints"]
-    z = 0.25 + 0.001
+    z = _sidewalk_top(p) + 0.001
     xmin, xmax = j["x_range"]
     xs = _frange(xmin, xmax, j["x_step"])
     y_lo, y_hi = 3.5, 7.0
@@ -168,20 +191,21 @@ def _build_sidewalk_joints(p, concrete):
 
 def _build_drain(p):
     d = p["drain"]
+    road_top = _road_top(p)
     frame = common.make_material("drain_frame", (0.03, 0.035, 0.045), roughness=0.5)
     common.add_box("drain_frame", (d["bar_length"] + 0.06, d["bar_gap"] * d["bar_count"] + 0.04, 0.01),
-                   (d["x"], d["y"], 0.10 + 0.001), frame, bevel=0.0)
+                   (d["x"], d["y"], road_top + 0.001), frame, bevel=0.0)
     bars = _frange(-(d["bar_count"] - 1) / 2 * d["bar_gap"], (d["bar_count"] - 1) / 2 * d["bar_gap"], d["bar_gap"])
     steel = bpy.data.materials["steel"]
     for i, offset in enumerate(bars):
         common.add_box(f"drain_bar_{i}", (d["bar_length"], d["bar_width"], d["bar_thickness"]),
-                       (d["x"], d["y"] + offset, 0.10 + 0.008), steel, bevel=0.0)
+                       (d["x"], d["y"] + offset, road_top + 0.008), steel, bevel=0.0)
 
 
 def _build_bollards(p):
     b = p["bollards"]
     steel = bpy.data.materials["steel"]
-    top_of_sidewalk = 0.25
+    top_of_sidewalk = _sidewalk_top(p)
     body_z = top_of_sidewalk + b["height"] / 2
     cap_z = top_of_sidewalk + b["height"]
     for i, (x, y) in enumerate(b["positions"]):
@@ -269,7 +293,10 @@ def build_lamp_and_props(p):
     glyph = common.make_material("glyph", (0.75, 0.72, 0.60), roughness=0.6)
     for i, w in enumerate((0.30, 0.18, 0.26)):
         common.add_box(f"glyph_{i}", (w, 0.01, 0.04), (-2.5 - (0.30 - w) / 2, 4.08, 2.38 - i * 0.14), glyph, bevel=0.0)
-    common.add_cylinder("bin", 0.22, 0.75, (2.2, 4.3, 0.375 + 0.25), common.make_material("bin", (0.05, 0.06, 0.07), roughness=0.5), bevel=0.02)
+    bin_cfg = p["bin"]
+    common.add_cylinder("bin", bin_cfg["radius"], bin_cfg["height"],
+                        (2.2, 4.3, _sidewalk_top(p) + bin_cfg["height"] / 2),
+                        common.make_material("bin", (0.05, 0.06, 0.07), roughness=0.5), bevel=0.02)
     # 유리구슬: 벤치 위. 안에 아주 작은 행성
     marble = common.make_material("marble", (0.9, 0.95, 1.0), roughness=0.0, transmission=1.0, ior=1.5)
     common.add_sphere("marble_glass", 0.08, (0.3, 5.0, 0.53 + 0.08), marble)
@@ -296,14 +323,15 @@ def _build_sign_detail(p, steel):
 def _build_bin_detail(p):
     d = p["bin_detail"]
     bin_mat = bpy.data.materials["bin"]
-    top = 0.25 + 0.75
+    top = _bin_top(p)
+    bin_mid_z = _sidewalk_top(p) + p["bin"]["height"] / 2
     common.add_cylinder("bin_lid", d["lid_radius"], d["lid_height"], (2.2, 4.3, top - d["lid_height"] / 2),
                         bin_mat, bevel=0.01)
     for i in range(d["groove_count"]):
         angle = i * (2.0 * math.pi / d["groove_count"])
         x = 2.2 + d["groove_ring_radius"] * math.cos(angle)
         y = 4.3 + d["groove_ring_radius"] * math.sin(angle)
-        common.add_cylinder(f"bin_groove_{i}", d["groove_radius"], d["groove_height"], (x, y, 0.25 + 0.375),
+        common.add_cylinder(f"bin_groove_{i}", d["groove_radius"], d["groove_height"], (x, y, bin_mid_z),
                             bin_mat)
 
 
@@ -312,9 +340,13 @@ def build_background(p):
     dark = common.make_material("silhouette", (0.012, 0.014, 0.020), roughness=0.9)
     # 설계의 "가늘고 긴 나무 실루엣". 구를 쌓으면 구슬을 꿴 모양이 되므로,
     # 구 하나를 세로로 늘인 타원체로 사이프러스 같은 실루엣을 만든다. 가지와 캐노피 여러 겹은
-    # 나무마다 random.Random(고정 시드)로 흔들어 실루엣을 풍부하게 하되 매 실행 동일하게 만든다.
-    rng = random.Random(p["trees"]["seed"])
+    # 나무마다 독립된 random.Random(f"{시드}-{나무 인덱스}") 인스턴스로 흔든다. 나무 하나를
+    # 더하거나 빼거나 그 나무의 형태 파라미터만 바꿔도 다른 나무의 난수 소비 위치가 밀리지
+    # 않도록 하기 위해서다(하나의 rng를 공유하면 이 국지성이 깨진다). 시드는 고정이라 매
+    # 실행 동일하게 만든다.
+    seed = p["trees"]["seed"]
     for i, (x, y, h, w) in enumerate(p["trees"]["placements"]):
+        rng = random.Random(f"{seed}-{i}")
         _build_tree(p, f"tree{i}", x, y, h, w, dark, rng)
     for i, x in enumerate((-14.0, 14.0)):
         common.add_cylinder(f"pole_{i}", 0.10, 7.0, (x, 6.5, 3.5), dark)
@@ -378,7 +410,7 @@ def build_leaves(p):
         x = rng.uniform(*cfg["x_range"])
         y = rng.uniform(*cfg["y_range"])
         on_sidewalk = y >= 3.5
-        z = 0.256 if on_sidewalk else 0.106
+        z = (_sidewalk_top(p) + 0.006) if on_sidewalk else (_road_top(p) + 0.006)
         size = rng.uniform(*cfg["size_range"])
         rotation = (rng.uniform(-tilt, tilt), rng.uniform(-tilt, tilt), rng.uniform(0, 2.0 * math.pi))
         common.add_plane(f"leaf_{i}", size, (x, y, z), leaf, rotation=rotation)
