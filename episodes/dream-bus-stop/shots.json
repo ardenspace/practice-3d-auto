@@ -10,12 +10,9 @@
   "outro": {"scene": "planet", "camera": "main", "event": "ascend", "duration_s": 20},
   "loops": [
     {"camera": "wide", "duration_s": 90},
-    {"camera": "shelter", "duration_s": 150},
-    {"camera": "marble", "duration_s": 120},
     {"camera": "puddle", "duration_s": 120}
   ],
   "events": [
-    {"camera": "wide", "event": "bus", "duration_s": 30},
-    {"camera": "shelter", "event": "bus", "duration_s": 30}
+    {"camera": "wide", "event": "bus", "duration_s": 30}
   ]
 }
