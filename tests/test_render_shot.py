@@ -125,18 +125,22 @@ def test_frame_files_numeric_sort_mixed_digit_widths(tmp_path):
 
     자리수가 섞여 있을 때도 올바르게 정렬되어야 한다. 예: frame_0009.png < frame_0010.png < frame_9999.png < frame_10000.png
     문자열 정렬이었다면 frame_10000.png가 frame_9999.png보다 앞에 오므로 실패한다.
+
+    숫자로 파싱되지 않는 파일(예: frame_abc.png)은 결과에서 제외된다. 그래야 _drop_broken_last_frame이
+    진짜 마지막 프레임을 지우고, _encode_frames_to_mp4도 엉뚱한 파일에 영향받지 않는다.
     """
     frames_dir = tmp_path / "frames"
     frames_dir.mkdir()
 
-    # 자리수가 섞인 파일 이름 생성
-    test_files = ["frame_0009.png", "frame_10000.png", "frame_0010.png", "frame_9999.png"]
+    # 자리수가 섞인 파일 + 파싱 불가능한 파일
+    test_files = ["frame_0009.png", "frame_10000.png", "frame_0010.png", "frame_9999.png", "frame_abc.png"]
     for name in test_files:
         (frames_dir / name).touch()
 
     result = render_shot._frame_files(frames_dir)
     result_names = [f.name for f in result]
 
-    # 정수 정렬이 올바른 순서
+    # 정수 정렬이 올바른 순서, 파싱 불가능한 frame_abc.png는 제외
     expected = ["frame_0009.png", "frame_0010.png", "frame_9999.png", "frame_10000.png"]
     assert result_names == expected, f"정렬 순서가 틀렸습니다. 기대: {expected}, 받음: {result_names}"
+    assert "frame_abc.png" not in result_names, "파싱되지 않는 파일은 결과에서 제외되어야 합니다"

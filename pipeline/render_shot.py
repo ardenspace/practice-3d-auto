@@ -5,6 +5,7 @@ bpy를 import하지 않는다. 장면 스크립트와는 CLI 인자와 파일로
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -32,23 +33,24 @@ def _frame_files(frames_dir: Path) -> list[Path]:
 
     파일 이름에서 frame_XXXX.png의 XXXX 부분을 정수로 파싱해 정렬한다.
     자리수가 다르면 문자열 정렬이 틀린다 (예: "frame_10000.png" < "frame_9999.png").
+    숫자로 파싱되지 않는 파일은 결과에서 제외한다. 그렇지 않으면 _drop_broken_last_frame이
+    진짜 마지막 프레임 대신 잘못된 파일을 지운다.
     """
-    import re
-
-    files = list(frames_dir.glob("frame_*.png"))
-
-    def extract_frame_number(path: Path) -> int:
+    def extract_frame_number(path: Path) -> int | None:
         """파일 이름에서 프레임 번호를 정수로 추출한다.
 
-        숫자로 파싱되지 않는 파일은 무시한다 (glob 패턴이 이미 frame_*.png를 보장하므로 드물다).
+        숫자로 파싱되지 않으면 None을 반환해 필터링된다.
         """
         match = re.search(r"frame_(\d+)\.png", path.name)
         if match:
             return int(match.group(1))
-        # 예상 밖의 파일은 파일 이름 사전 정렬로 뒤로 간다
-        return float('inf')
+        return None
 
-    return sorted(files, key=extract_frame_number)
+    files = list(frames_dir.glob("frame_*.png"))
+    # 파싱 가능한 파일만 필터링
+    valid_files = [f for f in files if extract_frame_number(f) is not None]
+    # 프레임 번호로 정렬
+    return sorted(valid_files, key=extract_frame_number)
 
 
 def _drop_broken_last_frame(frames_dir: Path) -> None:
