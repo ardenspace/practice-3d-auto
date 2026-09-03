@@ -47,3 +47,9 @@ def test_bus_stop_scene_is_deterministic():
     first = check_scene("bus_stop", camera="wide")
     second = check_scene("bus_stop", camera="wide")
     assert first["objects"] == second["objects"]
+
+
+def test_short_animation_writes_mp4(tmp_path):
+    out = render_clip("bus_stop", "wide", tmp_path / "wide.mp4", frame_start=1, frame_end=6,
+                      resolution=(160, 90), fps=12, samples=4)
+    assert out.exists() and out.stat().st_size > 5_000
