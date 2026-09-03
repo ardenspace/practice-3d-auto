@@ -7,3 +7,4 @@ library/music/
 library/ambience/
 library/hdri/
 .DS_Store
+episodes/*/final/
