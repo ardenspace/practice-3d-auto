@@ -67,6 +67,76 @@ def make_material(name, color, roughness=0.6, metallic=0.0, emission=None,
     return mat
 
 
+def add_procedural_roughness(material, scale=8.0, roughness_range=(0.2, 0.8), bump_strength=0.0,
+                             coordinate="GENERATED"):
+    """이미 만든 재질에 절차적 노이즈로 거칠기 얼룩을 입히고, 선택적으로 약한 범프를 얹는다.
+
+    노드 구성(Blender 5.2, 헤드리스로 직접 확인): Texture Coordinate(Generated/Object 출력)
+    → Noise Texture(Vector 입력, Factor 출력) → Map Range(Value 입력, Result 출력) →
+    Principled BSDF 의 Roughness. bump_strength > 0 이면 Noise Texture 의 Factor 를
+    Bump(Height 입력) 에도 보내 그 Normal 출력을 Principled BSDF 의 Normal 에 연결한다.
+    (Noise Texture 의 출력 소켓 이름은 "Fac" 이 아니라 "Factor" 다 — 헤드리스로 실측해 확인했다.)
+
+    coordinate: "GENERATED"(오브젝트 바운딩 박스 0~1 정규화, 크기가 다른 오브젝트에도 같은
+    scale 값이 비슷한 입자 크기로 보인다) 또는 "OBJECT"(오브젝트 로컬 좌표, 정규화 없음).
+    둘 다 오브젝트별 좌표라 World 좌표와 달리 무늬가 여러 오브젝트에 걸쳐 한 자리에
+    고정되지 않는다 — 이 재질 헬퍼가 어느 쪽이든 World 좌표만은 쓰지 않는 이유다.
+
+    bump_strength가 0이면 Bump 노드를 만들지 않는다(발광 재질처럼 매끈해야 하는 곳에는
+    이 헬퍼 자체를 호출하지 않는 것이 원칙이지만, 범프만 뺀 거칠기 변주만 원할 때도 쓴다).
+    """
+    nt = material.node_tree
+    nodes, links = nt.nodes, nt.links
+    bsdf = nodes["Principled BSDF"]
+
+    coord = nodes.new("ShaderNodeTexCoord")
+    noise = nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = scale
+    maprange = nodes.new("ShaderNodeMapRange")
+    maprange.inputs["From Min"].default_value = 0.0
+    maprange.inputs["From Max"].default_value = 1.0
+    maprange.inputs["To Min"].default_value = roughness_range[0]
+    maprange.inputs["To Max"].default_value = roughness_range[1]
+
+    coord_output = "Object" if coordinate == "OBJECT" else "Generated"
+    links.new(coord.outputs[coord_output], noise.inputs["Vector"])
+    links.new(noise.outputs["Factor"], maprange.inputs["Value"])
+    links.new(maprange.outputs["Result"], bsdf.inputs["Roughness"])
+
+    if bump_strength > 0.0:
+        bump = nodes.new("ShaderNodeBump")
+        bump.inputs["Strength"].default_value = bump_strength
+        links.new(noise.outputs["Factor"], bump.inputs["Height"])
+        links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+
+    return material
+
+
+def add_sag_curve(name, start, end, sag, material, radius=0.012, resolution=6):
+    """두 점을 잇는, 가운데가 sag 만큼 처진 베지어 커브(전선 등). 베벨로 굵기를 준다.
+
+    도형 수를 늘리지 않고 늘어진 선을 표현하는 용도. 시작·중간(처진 지점)·끝, 세 점을
+    AUTO 핸들로 이어 매끈한 곡선을 만든다.
+    """
+    curve = bpy.data.curves.new(name, type="CURVE")
+    curve.dimensions = "3D"
+    curve.bevel_depth = radius
+    curve.bevel_resolution = 2
+    curve.resolution_u = resolution
+    spline = curve.splines.new("BEZIER")
+    spline.bezier_points.add(2)  # 기본 1개 + 2 = 총 3점(시작·중간·끝)
+    mid = tuple((start[i] + end[i]) / 2 for i in range(3))
+    sagged_mid = (mid[0], mid[1], mid[2] - sag)
+    for point, co in zip(spline.bezier_points, (start, sagged_mid, end)):
+        point.co = co
+        point.handle_left_type = "AUTO"
+        point.handle_right_type = "AUTO"
+    obj = bpy.data.objects.new(name, curve)
+    if material is not None:
+        obj.data.materials.append(material)
+    return _link(obj)
+
+
 def _finish(obj, name, material, bevel):
     obj.name = name
     if material is not None:
