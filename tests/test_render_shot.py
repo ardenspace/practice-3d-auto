@@ -118,3 +118,25 @@ def test_render_clip_drops_last_frame_before_resuming(tmp_path, monkeypatch):
     for name in ("frame_0001.png", "frame_0002.png", "frame_0003.png"):
         assert after[name] == files_before[name], f"{name}는 다시 렌더되면 안 된다"
     assert after["frame_0004.png"] > files_before["frame_0004.png"]
+
+
+def test_frame_files_numeric_sort_mixed_digit_widths(tmp_path):
+    """_frame_files가 파일 이름에서 숫자를 추출해 정수로 정렬해야 한다.
+
+    자리수가 섞여 있을 때도 올바르게 정렬되어야 한다. 예: frame_0009.png < frame_0010.png < frame_9999.png < frame_10000.png
+    문자열 정렬이었다면 frame_10000.png가 frame_9999.png보다 앞에 오므로 실패한다.
+    """
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+
+    # 자리수가 섞인 파일 이름 생성
+    test_files = ["frame_0009.png", "frame_10000.png", "frame_0010.png", "frame_9999.png"]
+    for name in test_files:
+        (frames_dir / name).touch()
+
+    result = render_shot._frame_files(frames_dir)
+    result_names = [f.name for f in result]
+
+    # 정수 정렬이 올바른 순서
+    expected = ["frame_0009.png", "frame_0010.png", "frame_9999.png", "frame_10000.png"]
+    assert result_names == expected, f"정렬 순서가 틀렸습니다. 기대: {expected}, 받음: {result_names}"

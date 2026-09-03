@@ -28,7 +28,27 @@ def _base_cmd(scene: str) -> list[str]:
 
 
 def _frame_files(frames_dir: Path) -> list[Path]:
-    return sorted(frames_dir.glob("frame_*.png"))
+    """프레임 파일을 숫자로 정렬하여 반환한다.
+
+    파일 이름에서 frame_XXXX.png의 XXXX 부분을 정수로 파싱해 정렬한다.
+    자리수가 다르면 문자열 정렬이 틀린다 (예: "frame_10000.png" < "frame_9999.png").
+    """
+    import re
+
+    files = list(frames_dir.glob("frame_*.png"))
+
+    def extract_frame_number(path: Path) -> int:
+        """파일 이름에서 프레임 번호를 정수로 추출한다.
+
+        숫자로 파싱되지 않는 파일은 무시한다 (glob 패턴이 이미 frame_*.png를 보장하므로 드물다).
+        """
+        match = re.search(r"frame_(\d+)\.png", path.name)
+        if match:
+            return int(match.group(1))
+        # 예상 밖의 파일은 파일 이름 사전 정렬로 뒤로 간다
+        return float('inf')
+
+    return sorted(files, key=extract_frame_number)
 
 
 def _drop_broken_last_frame(frames_dir: Path) -> None:
