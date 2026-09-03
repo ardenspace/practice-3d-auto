@@ -14,6 +14,8 @@ def _render(shot, spec, renders, default_scene):
     scene = shot.get("scene", default_scene)
     frames = int(shot["duration_s"] * spec["fps"])
     out = renders / f"{scene}_{shot['camera']}_{shot.get('event', 'none')}.mp4"
+    status = "재사용" if out.exists() else "렌더"
+    print(f"[render] {status}: {out.name} ({shot['duration_s']}s, {frames}프레임)")
     return render_clip(scene, shot["camera"], out, frame_start=1, frame_end=frames,
                        resolution=tuple(spec["resolution"]), fps=spec["fps"], samples=spec["samples"],
                        event=shot.get("event", "none"))
@@ -42,6 +44,7 @@ def run(episode_dir) -> Path:
     minutes = spec["target_minutes"]
     label = f"{minutes:g}min"
     out = episode_dir / "final" / f"{episode_dir.name}_{label}.mp4"
+    print(f"[assemble] 클립 {len(sequence)}개 조립 시작 -> {out}")
     return assemble(sequence, out, intro=intro, outro=outro, ambience=ambience, xfade_s=spec["xfade_s"])
 
 

@@ -56,3 +56,29 @@ def test_assemble_crossfades_and_adds_audio(tmp_path):
     streams = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(out)],
                              capture_output=True, text=True, check=True).stdout
     assert "audio" in streams and "video" in streams
+
+
+def _stream_types(path) -> str:
+    return subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def test_assemble_without_ambience_has_no_audio_stream(tmp_path):
+    """ambience=None 분기(-an). 30분 완성본을 실제로 만든 경로인데 기존 테스트는 전부 ambience를 넘겼다."""
+    clips = [_color_clip(tmp_path / f"{c}.mp4", 3, c) for c in ("red", "green", "blue")]
+    out = assemble(clips, tmp_path / "final.mp4", xfade_s=0.5)
+    # 3클립 합계 9초, 크로스페이드 2번 × 0.5초 = 8초. intro/outro=None 분기도 함께 덮는다.
+    assert math.isclose(probe_duration(out), 8.0, abs_tol=0.3)
+    streams = _stream_types(out)
+    assert "video" in streams
+    assert "audio" not in streams
+
+
+def test_assemble_single_clip_without_ambience(tmp_path):
+    """len(clips) == 1 분기([0:v]copy[v1])와 무음 분기를 함께 덮는다."""
+    clip = _color_clip(tmp_path / "solo.mp4", 3, "red")
+    out = assemble([clip], tmp_path / "final.mp4", xfade_s=0.5)
+    assert math.isclose(probe_duration(out), 3.0, abs_tol=0.3)
+    streams = _stream_types(out)
+    assert "video" in streams
+    assert "audio" not in streams

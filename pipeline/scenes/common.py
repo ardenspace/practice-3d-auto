@@ -84,6 +84,9 @@ def add_procedural_roughness(material, scale=8.0, roughness_range=(0.2, 0.8), bu
 
     bump_strength가 0이면 Bump 노드를 만들지 않는다(발광 재질처럼 매끈해야 하는 곳에는
     이 헬퍼 자체를 호출하지 않는 것이 원칙이지만, 범프만 뺀 거칠기 변주만 원할 때도 쓴다).
+
+    주의: Roughness 소켓을 이 노드 체인의 링크로 덮어쓴다. make_material(roughness=...)로
+    넘긴 정적 값은 이 함수를 호출한 뒤에는 죽은 값이 된다.
     """
     nt = material.node_tree
     nodes, links = nt.nodes, nt.links

@@ -24,6 +24,8 @@ def repeat_clip(clip, out_path, times=2) -> Path:
 def build_sequence(loop_clips, event_clips, durations, target_s, event_every_s):
     """루프 클립을 순환하며 target_s를 채우고, event_every_s가 지날 때마다 이벤트 클립을 끼운다."""
     loop_clips, event_clips = list(loop_clips), list(event_clips)
+    if not loop_clips:
+        raise ValueError("loop_clips가 비어 있습니다 — shots.json의 loops를 확인하십시오.")
     seq, total, since_event, i, e = [], 0.0, 0.0, 0, 0
     while total < target_s:
         clip = loop_clips[i % len(loop_clips)]
@@ -43,6 +45,8 @@ def build_sequence(loop_clips, event_clips, durations, target_s, event_every_s):
 def assemble(sequence, out_path, *, intro=None, outro=None, ambience=None, xfade_s=2.0, crf=18) -> Path:
     """클립들을 xfade로 이어 붙이고 환경음을 깔아 최종 mp4를 만든다. 모든 클립은 같은 해상도·fps여야 한다."""
     clips = [Path(c) for c in ([intro] if intro else []) + list(sequence) + ([outro] if outro else [])]
+    if not clips:
+        raise ValueError("합칠 클립이 없습니다 (sequence·intro·outro가 모두 비었습니다).")
     durations = [probe_duration(c) for c in clips]
     total = sum(durations) - xfade_s * (len(clips) - 1)
 

@@ -176,7 +176,7 @@ def build_ground_and_road(p):
     # 도로 가운데 점선
     dash = common.make_material("dash", (0.35, 0.33, 0.25), roughness=0.5)
     for i in range(-14, 15):
-        common.add_box(f"dash_{i}", (2.0, 0.12, 0.01), (i * 4.0, 0, 0.105), dash, bevel=0.0)
+        common.add_box(f"dash_{i}", (2.0, 0.12, 0.01), (i * 4.0, 0, _road_top(p) + 0.005), dash, bevel=0.0)
     _build_curb(p, concrete)
     _build_sidewalk_joints(p, concrete)
     _build_drain(p)
@@ -411,7 +411,8 @@ def _build_power_lines(p, dark):
 def build_puddles(p):
     water = common.make_material("water", (0.010, 0.012, 0.018), roughness=0.03)
     for i, (x, y, r) in enumerate(((1.0, -1.5, 1.6), (-3.0, 2.2, 1.1), (2.6, 3.9, 0.7))):
-        common.add_cylinder(f"puddle_{i}", r, 0.006, (x, y, 0.103 if y < 3.5 else 0.253), water, vertices=48)
+        z = _road_top(p) + 0.003 if y < 3.5 else _sidewalk_top(p) + 0.003
+        common.add_cylinder(f"puddle_{i}", r, 0.006, (x, y, z), water, vertices=48)
 
 
 def build_leaves(p):

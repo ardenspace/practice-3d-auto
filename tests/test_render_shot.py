@@ -1,3 +1,4 @@
+import json
 import subprocess
 from pathlib import Path
 
@@ -144,3 +145,97 @@ def test_frame_files_numeric_sort_mixed_digit_widths(tmp_path):
     expected = ["frame_0009.png", "frame_0010.png", "frame_9999.png", "frame_10000.png"]
     assert result_names == expected, f"정렬 순서가 틀렸습니다. 기대: {expected}, 받음: {result_names}"
     assert "frame_abc.png" not in result_names, "파싱되지 않는 파일은 결과에서 제외되어야 합니다"
+
+
+def test_encode_frames_to_mp4_raises_on_missing_frames(tmp_path):
+    """지적 1: 프레임이 하나라도 빠지면, ffmpeg이 조용히 exit 0을 내는 대신 예외를 던져야 한다.
+
+    Blender를 부르지 않고 가짜 PNG 파일만으로 확인한다. 10프레임 중 frame_0005.png를
+    비워서 리뷰어가 로컬에서 재현한 상황(exit 0, 잘린 mp4)을 흉내 낸다.
+    """
+    frames_dir = tmp_path / "wide.mp4.frames"
+    frames_dir.mkdir()
+    for n in range(1, 11):
+        if n == 5:
+            continue
+        (frames_dir / f"frame_{n:04d}.png").write_bytes(b"not a real png, presence is all that matters")
+    dest = tmp_path / "wide.mp4"
+
+    with pytest.raises(RuntimeError) as exc_info:
+        render_shot._encode_frames_to_mp4(frames_dir, dest, frame_start=1, frame_end=10, fps=12)
+
+    message = str(exc_info.value)
+    assert "1개" in message  # 빠진 프레임 개수
+    assert "5" in message  # 빠진 프레임 번호
+    assert not dest.exists()  # 인코딩을 시도하지도 않았다
+
+
+def test_encode_frames_to_mp4_reports_multiple_missing_frame_numbers(tmp_path):
+    frames_dir = tmp_path / "wide.mp4.frames"
+    frames_dir.mkdir()
+    for n in (1, 2, 3, 8, 9, 10):
+        (frames_dir / f"frame_{n:04d}.png").write_bytes(b"x")
+    dest = tmp_path / "wide.mp4"
+
+    with pytest.raises(RuntimeError) as exc_info:
+        render_shot._encode_frames_to_mp4(frames_dir, dest, frame_start=1, frame_end=10, fps=12)
+
+    message = str(exc_info.value)
+    assert "4개" in message  # 4, 5, 6, 7 네 개가 빠졌다
+    for n in ("4", "5", "6", "7"):
+        assert n in message
+
+
+def _fake_clip(path: Path, content: bytes = b"fake mp4 content") -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return path
+
+
+def test_render_clip_raises_when_manifest_mismatches_existing_clip(tmp_path):
+    """지적 2: 클립은 있는데 매니페스트 값이 회차 정의와 다르면 조용히 재사용하지 말고 예외를 던진다.
+
+    Blender를 부르지 않는다 — out_path가 이미 있으므로 render_clip은 매니페스트만 비교한다.
+    """
+    out = _fake_clip(tmp_path / "bus_stop_wide_none.mp4")
+    stale = render_shot._expected_manifest("bus_stop", "wide", "none", 1, 100,
+                                           (1920, 1080), 24, 64, False)
+    stale["samples"] = 16  # 회차 정의(PARAMS 변경 등)와 달라진 상황을 흉내 낸다
+    render_shot._manifest_path(out).write_text(json.dumps(stale))
+
+    with pytest.raises(RuntimeError) as exc_info:
+        render_clip("bus_stop", "wide", out, frame_start=1, frame_end=100,
+                    resolution=(1920, 1080), fps=24, samples=64, event="none")
+
+    message = str(exc_info.value)
+    assert "지우고 다시 렌더" in message
+    assert str(out) in message
+    assert out.exists()  # 예외를 던져도 기존 파일은 건드리지 않는다
+
+
+def test_render_clip_warns_and_reuses_clip_without_manifest(tmp_path, capsys):
+    """episodes/dream-bus-stop/renders/의 매니페스트 없는 기존 승인 클립을 흉내 낸다.
+
+    예외를 던지면 그 산출물이 전부 못 쓰게 되므로, 경고만 남기고 그대로 재사용해야 한다.
+    """
+    out = _fake_clip(tmp_path / "bus_stop_wide_none.mp4")
+    assert not render_shot._manifest_path(out).exists()
+
+    result = render_clip("bus_stop", "wide", out, frame_start=1, frame_end=100,
+                         resolution=(1920, 1080), fps=24, samples=64, event="none")
+
+    assert result == out
+    assert "매니페스트가 없습니다" in capsys.readouterr().out
+    assert not render_shot._manifest_path(out).exists()  # 매니페스트를 새로 만들지도 않는다
+
+
+def test_render_clip_reuses_clip_when_manifest_matches(tmp_path):
+    out = _fake_clip(tmp_path / "bus_stop_wide_none.mp4")
+    expected = render_shot._expected_manifest("bus_stop", "wide", "none", 1, 100,
+                                              (1920, 1080), 24, 64, False)
+    render_shot._manifest_path(out).write_text(json.dumps(expected))
+
+    result = render_clip("bus_stop", "wide", out, frame_start=1, frame_end=100,
+                         resolution=(1920, 1080), fps=24, samples=64, event="none")
+
+    assert result == out
