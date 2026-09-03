@@ -48,7 +48,12 @@ PARAMS = {
                     "amplitudes": (0.6, 0.0, 0.08), "harmonics": (1, 1, 2)},
         "shelter": {"location": (-1.2, 5.3, 1.5), "target": (30.0, 2.0, 1.2), "lens": 35, "fstop": 2.0,
                     "amplitudes": (0.4, 0.0, 0.03), "harmonics": (1, 1, 2)},
-        "marble":  {"location": (0.9, 4.2, 1.15), "target": (0.3, 5.0, 0.95), "lens": 60, "fstop": 1.4,
+        "marble":  {"location": (0.9, 4.2, 1.15),
+                    # target 은 marble_glass 중심(0.3, 5.0, 0.61)을 그대로 겨냥해야 한다. 위로
+                    # 0.34m 만 벗어나도 시선축(카메라→목표점)과 카메라→구슬 방향의 각도가
+                    # 17.1도로 벌어지는데, 60mm 렌즈의 세로 반화각은 9.6도뿐이라 구슬이
+                    # 프레임 밖으로 나간다.
+                    "target": (0.3, 5.0, 0.61), "lens": 60, "fstop": 1.4,
                     "amplitudes": (0.12, 0.08, 0.02), "harmonics": (1, 1, 1)},
         "puddle":  {"location": (1.5, -2.0, 0.25), "target": (2.5, 4.3, 1.0), "lens": 28, "fstop": 2.8,
                     "amplitudes": (0.0, 0.0, 0.15), "harmonics": (1, 1, 1)},
