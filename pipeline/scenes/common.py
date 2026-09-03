@@ -259,7 +259,8 @@ def _setup_glare(scene, threshold, strength, size):
 
 
 def setup_render(resolution, fps, frame_start, frame_end, samples,
-                 glare_threshold=1.0, glare_strength=0.25, glare_size=0.6):
+                 glare_threshold=1.0, glare_strength=0.25, glare_size=0.6,
+                 shadow_resolution_scale=1.0, shadow_step_count=6):
     scene = bpy.context.scene
     scene.render.engine = "BLENDER_EEVEE"
     scene.render.resolution_x, scene.render.resolution_y = resolution
@@ -269,6 +270,10 @@ def setup_render(resolution, fps, frame_start, frame_end, samples,
     scene.eevee.taa_render_samples = samples
     scene.eevee.use_raytracing = True  # 물웅덩이·젖은 바닥 반사
     scene.eevee.use_shadows = True
+    # 기본값(1.0, 6)은 Blender 기본값 그대로다. 관문 2 실측: 정류장 장면을 0.5/3으로 낮추면
+    # 프레임당 1.56초→1.28초로 줄고, 스틸 비교에서 승인받은 화면과 구분되지 않았다.
+    scene.eevee.shadow_resolution_scale = shadow_resolution_scale
+    scene.eevee.shadow_step_count = shadow_step_count
     scene.view_settings.view_transform = "AgX"
     try:
         scene.view_settings.look = "AgX - Medium High Contrast"
@@ -287,13 +292,20 @@ def render_still(out_path, frame):
 
 
 def render_animation(out_path):
+    """out_path를 파일명 접두어로 삼아 프레임마다 PNG를 쓴다(연속 이미지, mp4 아님).
+
+    Blender가 접두어 뒤에 프레임 번호(4자리)와 확장자를 붙인다(예: "frame_" → "frame_0001.png").
+    use_overwrite=False로 두면 이미 있는 프레임 파일은 건너뛴다 — venv 쪽(render_shot.py)이
+    이 성질로 프레임 단위 재개를 구현한다. use_placeholder는 켜지 않는다 — 켜면 렌더 시작과
+    동시에 빈 파일이 생겨서, 중간에 죽은 프레임이 완료된 것처럼 보인다.
+    """
     scene = bpy.context.scene
-    scene.render.image_settings.media_type = "VIDEO"
-    scene.render.image_settings.file_format = "FFMPEG"
-    scene.render.ffmpeg.format = "MPEG4"
-    scene.render.ffmpeg.codec = "H264"
-    scene.render.ffmpeg.constant_rate_factor = "PERC_LOSSLESS"  # 중간 산출물: 조립 때 다시 인코딩한다
+    scene.render.image_settings.media_type = "IMAGE"
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.image_settings.color_mode = "RGB"
     scene.render.filepath = str(out_path)
+    scene.render.use_overwrite = False
+    scene.render.use_placeholder = False
     bpy.ops.render.render(animation=True)
 
 
@@ -315,7 +327,9 @@ def run_scene(build, params):
     args = parse_scene_args()
     resolution = tuple(int(v) for v in args.resolution.split("x"))
     clear_scene()
-    setup_render(resolution, args.fps, args.frame_start, args.frame_end, args.samples, **params["glare"])
+    # "shadow" 키가 없는 장면(예: 아직 없는 planet.py)에서는 setup_render의 기본값(1.0, 6)을 쓴다.
+    setup_render(resolution, args.fps, args.frame_start, args.frame_end, args.samples,
+                **params["glare"], **params.get("shadow", {}))
     cameras = build(params, args.frame_start, args.frame_end, args.event)
     if args.camera not in cameras:
         raise RuntimeError(f"카메라 {args.camera!r}가 없습니다. 가능: {sorted(cameras)}")

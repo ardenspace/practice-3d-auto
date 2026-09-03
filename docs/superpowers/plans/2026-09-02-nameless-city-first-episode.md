@@ -54,7 +54,14 @@ Blender --background --python-exit-code 1 --python pipeline/scenes/<scene>.py --
 
 - `--check`: 장면을 짓고 `CHECK:{json}` 한 줄을 stdout에 출력한 뒤 렌더 없이 끝난다.
 - `--still`: `--frame-start` 프레임 한 장을 `--out`(png)으로 렌더한다.
-- 둘 다 없으면 `--frame-start`~`--frame-end`를 `--out`(mp4)으로 렌더한다.
+- 둘 다 없으면 `--frame-start`~`--frame-end`를 렌더한다. **`--out`은 이때 mp4 경로가 아니라 PNG
+  연속 이미지 파일명 접두어다**(예: `.../wide.mp4.frames/frame_` → `frame_0001.png`, `frame_0002.png`, ...).
+  `scene.render.use_overwrite = False`로 이미 있는 프레임은 건너뛴다(`use_placeholder`는 켜지
+  않는다 — 켜면 죽은 프레임이 완료된 것처럼 보인다). mp4로 합치는 것은 장면 스크립트가 아니라
+  venv 쪽 `pipeline/render_shot.py`의 책임이다: PNG 작업 디렉터리를 만들고, Blender로 빈
+  프레임만 채운 뒤, ffmpeg으로 인코딩하고, 성공하면 PNG를 지운다. 재개(같은 명령을 다시
+  실행하면 없는 프레임만 렌더)와, 죽다 만 마지막 프레임 보호(재개 전 가장 번호가 큰 PNG
+  하나를 지우고 시작)가 이 경로에서 이루어진다.
 - `--event`는 장면이 해석한다. 정류장은 `bus`, 행성은 `descend`/`ascend`를 안다. 모르는 값은 `none`처럼 취급한다.
 
 ---

@@ -27,31 +27,74 @@ def _base_cmd(scene: str) -> list[str]:
             "--python", str(scene_script(scene)), "--"]
 
 
-def render_clip(scene: str, camera: str, out_path, *, frame_start=1, frame_end=1,
-                resolution=(1920, 1080), fps=24, samples=64, still=False, event="none") -> Path:
-    out_path = Path(out_path).resolve()
-    if out_path.exists():  # 재실행 안전: 밤새 렌더가 중간에 죽어도 같은 명령으로 이어 간다
-        return out_path
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    # 임시 하위 디렉터리에 렌더한 뒤 성공했을 때만 최종 경로로 원자적으로 옮긴다.
-    # mp4는 Blender가 FFmpeg 먹서로 프레임마다 스트리밍 기록하므로, 도중에 죽으면
-    # 손상된 파일이 최종 경로에 남아 다음 실행이 완료된 산출물로 오판할 수 있다.
-    # 임시 파일명은 최종 파일과 동일하게 유지해 확장자(컨테이너/코덱 처리)를 바꾸지 않는다.
+def _frame_files(frames_dir: Path) -> list[Path]:
+    return sorted(frames_dir.glob("frame_*.png"))
+
+
+def _drop_broken_last_frame(frames_dir: Path) -> None:
+    """재개 전, 가장 번호가 큰 PNG 파일 하나를 지운다.
+
+    렌더 도중 프로세스가 죽으면 그 순간 쓰고 있던 프레임 파일이 다 쓰이지 못한 채로
+    남을 수 있다. 파일이 존재한다는 사실만으로는 완성 여부를 알 수 없으므로, 재개할
+    때마다 가장 번호가 큰 파일을 무조건 하나 지우고 다시 렌더한다. 이미 완성된
+    프레임이었다면 다시 렌더하는 비용만 더 들 뿐이지만, 손상된 프레임이 완성본 mp4에
+    섞이는 쪽이 그보다 훨씬 나쁘다.
+    """
+    files = _frame_files(frames_dir)
+    if files:
+        files[-1].unlink()
+
+
+def _render_frames_to_dir(scene: str, camera: str, frames_dir: Path, *, frame_start: int, frame_end: int,
+                          resolution: tuple[int, int], fps: int, samples: int, event: str) -> None:
+    """Blender를 불러 frames_dir 안의 없는 프레임만 채운다.
+
+    scene.render.use_overwrite=False(common.render_animation)이므로 이미 있는 프레임
+    파일은 건너뛴다 — 프레임 단위 재개는 전적으로 이 성질에 의존한다. frames_dir는
+    호출 전에 이미 만들어져 있어야 한다.
+    """
+    cmd = _base_cmd(scene) + [
+        "--camera", camera, "--out", str(frames_dir / "frame_"),
+        "--frame-start", str(frame_start), "--frame-end", str(frame_end),
+        "--resolution", f"{resolution[0]}x{resolution[1]}",
+        "--fps", str(fps), "--samples", str(samples), "--event", event,
+    ]
+    subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
+
+
+def _encode_frames_to_mp4(frames_dir: Path, dest: Path, *, frame_start: int, frame_end: int, fps: int) -> None:
+    """PNG 연속 이미지를 ffmpeg으로 mp4 하나로 만든다.
+
+    이 mp4는 중간 산출물이고 pipeline.assemble이 나중에 다시 인코딩하므로, 지금까지
+    common.render_animation이 Blender의 FFmpeg 먹서로 쓰던 것과 같은 수준의 고품질
+    설정(constant_rate_factor="PERC_LOSSLESS")에 대응하는 낮은 crf를 쓴다.
+    """
+    cmd = [
+        "ffmpeg", "-y",
+        "-framerate", str(fps),
+        "-start_number", str(frame_start),
+        "-i", str(frames_dir / "frame_%04d.png"),
+        "-frames:v", str(frame_end - frame_start + 1),
+        "-c:v", "libx264", "-crf", "12", "-pix_fmt", "yuv420p",
+        str(dest),
+    ]
+    subprocess.run(cmd, check=True)
+
+
+def _atomic_produce(out_path: Path, produce) -> Path:
+    """produce(tmp_path)로 tmp_path에 산출물을 만들고, 성공했을 때만 out_path로 원자적으로 옮긴다.
+
+    도중에 죽으면 손상된 파일이 최종 경로에 남아 다음 실행이 완료된 산출물로 오판할
+    수 있으므로, 임시 하위 디렉터리에 먼저 만든다. 임시 파일명은 최종 파일과 동일하게
+    유지해 확장자(컨테이너/코덱 처리)를 바꾸지 않는다.
+    """
     tmp_dir = out_path.parent / f".{out_path.name}.tmp"
     if tmp_dir.exists():  # 이전 실행이 죽으며 남긴 잔여물
         shutil.rmtree(tmp_dir)
     tmp_dir.mkdir(parents=True)
     tmp_path = tmp_dir / out_path.name
-    cmd = _base_cmd(scene) + [
-        "--camera", camera, "--out", str(tmp_path),
-        "--frame-start", str(frame_start), "--frame-end", str(frame_end),
-        "--resolution", f"{resolution[0]}x{resolution[1]}",
-        "--fps", str(fps), "--samples", str(samples), "--event", event,
-    ]
-    if still:
-        cmd.append("--still")
     try:
-        subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
+        produce(tmp_path)
         if not tmp_path.exists():
             raise RuntimeError(f"렌더가 산출물을 만들지 못했습니다: {tmp_path}")
         os.replace(tmp_path, out_path)  # 같은 파일시스템 안의 원자적 이동
@@ -59,6 +102,42 @@ def render_clip(scene: str, camera: str, out_path, *, frame_start=1, frame_end=1
         if tmp_dir.exists():
             shutil.rmtree(tmp_dir)
     return out_path
+
+
+def render_clip(scene: str, camera: str, out_path, *, frame_start=1, frame_end=1,
+                resolution=(1920, 1080), fps=24, samples=64, still=False, event="none") -> Path:
+    out_path = Path(out_path).resolve()
+    if out_path.exists():  # 재실행 안전: 밤새 렌더가 중간에 죽어도 같은 명령으로 이어 간다
+        return out_path
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if still:
+        def produce(tmp_path):
+            cmd = _base_cmd(scene) + [
+                "--camera", camera, "--out", str(tmp_path),
+                "--frame-start", str(frame_start), "--frame-end", str(frame_end),
+                "--resolution", f"{resolution[0]}x{resolution[1]}",
+                "--fps", str(fps), "--samples", str(samples), "--event", event,
+                "--still",
+            ]
+            subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
+        return _atomic_produce(out_path, produce)
+
+    # 애니메이션: Blender는 PNG 연속 이미지만 채우고, mp4 인코딩은 여기서 ffmpeg으로 한다.
+    # PNG 작업 디렉터리(frames_dir)는 최종 mp4 "옆"에 예측 가능한 이름(<out>.frames/)으로
+    # 둔다 — _atomic_produce의 tmp_dir(실패하면 통째로 지워지는 곳) 안에 두면 실패한 뒤
+    # 재개할 자료가 함께 사라진다. 두 디렉터리는 서로 다른 생명주기를 가진다.
+    frames_dir = out_path.parent / f"{out_path.name}.frames"
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    _drop_broken_last_frame(frames_dir)
+    _render_frames_to_dir(scene, camera, frames_dir, frame_start=frame_start, frame_end=frame_end,
+                          resolution=resolution, fps=fps, samples=samples, event=event)
+
+    def produce(tmp_path):
+        _encode_frames_to_mp4(frames_dir, tmp_path, frame_start=frame_start, frame_end=frame_end, fps=fps)
+    result = _atomic_produce(out_path, produce)
+    shutil.rmtree(frames_dir)  # 인코딩에 성공했으니 PNG 작업 디렉터리는 지운다
+    return result
 
 
 def check_scene(scene: str, camera="wide", event="none", frame_end=4) -> dict:

@@ -27,7 +27,9 @@ PARAMS = {
         "moon": (0.550, 0.650, 1.000),
     },
     "fog": {"density": 0.030, "emission_strength": 0.0015, "emission": (0.35, 0.45, 0.65), "end": 80.0,
-            "samples": 128, "tile_size": "2"},
+            # 실측(1080p, TAA 64): tile "2"→"4" 는 프레임당 3.05초→2.15초로 싸지지만 빛기둥에
+            # 격자 무늬가 돌아온다. samples 128→64 는 화면 차이가 거의 없이 4.23초→3.05초로 준다.
+            "samples": 64, "tile_size": "2"},
     "lamp": {"energy": 4000.0, "fill_energy": 250.0, "spot_size_deg": 104.0, "blend": 0.62, "head_emission": 40.0,
              # 조명은 기둥(z 0~4.20) 안에 들어가면 안 된다 — 자기 형상에 가려 빛이 못 빠져나온다.
              # spot_z/fill_z(4.40)는 전구 구체(z 4.32~4.68) 안쪽이지만, build_lamp_and_props 에서
@@ -37,6 +39,9 @@ PARAMS = {
              "flicker_dips": [(0.31, 0.004, 0.55), (0.33, 0.003, 0.35), (0.72, 0.005, 0.45)]},
     "moon": {"energy": 0.035, "volume_factor": 0.0, "rotation_deg": (50.0, 0.0, -30.0)},
     "glare": {"glare_threshold": 0.6, "glare_strength": 0.45, "glare_size": 0.7},
+    # 그림자 해상도/스텝을 낮춘다. 관문 2 실측(TAA 32): 1.56초→1.28초, 스틸 비교로 승인받은
+    # 화면과 구분되지 않았다.
+    "shadow": {"shadow_resolution_scale": 0.5, "shadow_step_count": 3},
     "rain": {"count": 4000, "lifetime": 40, "emitter_z": 9.0, "emitter_size": 40.0, "seed": 7},
     "cameras": {
         "wide":    {"location": (-0.2, -8.2, 1.50), "target": (1.5, 4.6, 1.55), "lens": 35, "fstop": 2.8,
