@@ -70,6 +70,8 @@ PARAMS = {
     "bollards": {"positions": ((-5.0, 3.75), (-6.4, 3.75), (5.6, 3.75)), "radius": 0.075, "height": 0.55,
                  "cap_radius": 0.09, "cap_height": 0.05},
     "side_glass": {"x": 1.46, "y_span": (4.34, 5.86)},
+    # 유리는 알파가 높으면 조명을 받아 불투명한 벽처럼 보인다. 배경이 비쳐 보일 만큼 낮춘다.
+    "glass": {"color": (0.34, 0.42, 0.52), "alpha": 0.09, "roughness": 0.05},
     "timetable": {"location_xy": (-1.0, 5.87), "z": 1.75, "bezel_size": (0.55, 0.02, 0.42),
                   "panel_size": (0.46, 0.014, 0.34)},
     "bench": {
@@ -87,14 +89,17 @@ PARAMS = {
         # 전신주 크로스바(x=±14, y=6.5, z=6.6, 크로스바 절반폭 0.8) 사이에 두 줄을 늘어뜨린다.
         "span_x": (-13.2, 13.2), "y_offsets": (0.0, 0.18), "z": 6.6, "sags": (1.3, 1.0), "radius": 0.012,
     },
-    "leaves": {"seed": 11, "count": 14, "size_range": (0.05, 0.09),
+    "leaves": {"seed": 11, "count": 26, "size_range": (0.09, 0.15),
                "x_range": (-5.0, 6.0), "y_range": (3.6, 6.8), "tilt_range_deg": 9.0},
     "trees": {
         "seed": 5, "branch_count_range": (3, 4), "branch_radius": 0.028,
-        "branch_tilt_deg_range": (35.0, 65.0), "branch_start_frac_range": (0.55, 0.80),
-        "branch_len_frac_range": (0.18, 0.30),
+        "branch_tilt_deg_range": (40.0, 70.0), "branch_start_frac_range": (0.44, 0.62),
+        "branch_len_frac_range": (0.08, 0.14),
         "lobe_count_range": (2, 3), "lobe_w_factor_range": (0.75, 1.05), "lobe_h_factor_range": (0.28, 0.38),
         "lobe_xy_jitter_factor": 0.4, "lobe_z_center_frac_range": (0.58, 0.68), "lobe_z_jitter_frac": 0.10,
+        # (x, y, 높이, 폭). 설계는 나무가 "안개 속으로 사라진다"고 하므로 충분히 뒤로 물린다.
+        "placements": ((-13.0, 16.0, 9.0, 0.44), (-5.0, 18.0, 10.5, 0.50),
+                       (7.0, 14.0, 9.5, 0.42), (15.0, 15.0, 8.5, 0.46)),
     },
     "material_variation": {
         # 노이즈 크기(scale)와 거칠기가 오갈 범위(roughness_range), 범프 세기(bump_strength).
@@ -190,7 +195,8 @@ def build_shelter(p):
     # steel 은 build_ground_and_road 의 배수구·볼라드가 먼저 참조하므로 build()에서
     # _build_shared_materials 로 미리 만들어 둔다. 여기서는 이미 만들어진 것을 가져다 쓴다.
     steel = bpy.data.materials["steel"]
-    glass = common.make_material("glass", (0.6, 0.7, 0.8), roughness=0.05, alpha=0.18)
+    gl = p["glass"]
+    glass = common.make_material("glass", gl["color"], roughness=gl["roughness"], alpha=gl["alpha"])
     common.add_procedural_roughness(glass, **p["material_variation"]["glass"])
     for name, (x, y) in {"post_fl": (-1.5, 4.3), "post_fr": (1.5, 4.3), "post_bl": (-1.5, 5.9), "post_br": (1.5, 5.9)}.items():
         common.add_box(name, (0.08, 0.08, 2.6), (x, y, 1.3), steel, bevel=0.01)
@@ -308,8 +314,7 @@ def build_background(p):
     # 구 하나를 세로로 늘인 타원체로 사이프러스 같은 실루엣을 만든다. 가지와 캐노피 여러 겹은
     # 나무마다 random.Random(고정 시드)로 흔들어 실루엣을 풍부하게 하되 매 실행 동일하게 만든다.
     rng = random.Random(p["trees"]["seed"])
-    for i, (x, y, h, w) in enumerate(((-9, 9, 8.0, 0.62), (-4, 12, 10.0, 0.70),
-                                      (6, 11, 9.0, 0.55), (12, 9, 7.5, 0.66))):
+    for i, (x, y, h, w) in enumerate(p["trees"]["placements"]):
         _build_tree(p, f"tree{i}", x, y, h, w, dark, rng)
     for i, x in enumerate((-14.0, 14.0)):
         common.add_cylinder(f"pole_{i}", 0.10, 7.0, (x, 6.5, 3.5), dark)
