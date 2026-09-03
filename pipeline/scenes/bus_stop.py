@@ -102,7 +102,10 @@ PARAMS = {
     "trees": {
         "seed": 5, "branch_count_range": (3, 4), "branch_radius": 0.028,
         "branch_tilt_deg_range": (40.0, 70.0), "branch_start_frac_range": (0.44, 0.62),
-        "branch_len_frac_range": (0.08, 0.14),
+        # 캐노피 반지름(w)에 대한 비율. 가지의 수평 도달 거리를 이 값으로 직접 고정하므로
+        # (길이는 tilt와 무관하게 reach/sin(tilt)로 역산한다) 1.0 미만으로 두면 가지 끝이
+        # 항상 캐노피 안쪽에 머문다.
+        "branch_reach_factor_range": (0.55, 0.9),
         "lobe_count_range": (2, 3), "lobe_w_factor_range": (0.75, 1.05), "lobe_h_factor_range": (0.28, 0.38),
         "lobe_xy_jitter_factor": 0.4, "lobe_z_center_frac_range": (0.58, 0.68), "lobe_z_jitter_frac": 0.10,
         # (x, y, 높이, 폭). 설계는 나무가 "안개 속으로 사라진다"고 하므로 충분히 뒤로 물린다.
@@ -365,7 +368,8 @@ def _build_tree(p, prefix, x, y, h, w, dark, rng):
         angle = rng.uniform(0, 2.0 * math.pi)
         tilt = math.radians(rng.uniform(*t["branch_tilt_deg_range"]))
         start_h = h * rng.uniform(*t["branch_start_frac_range"])
-        length = h * rng.uniform(*t["branch_len_frac_range"])
+        reach = w * rng.uniform(*t["branch_reach_factor_range"])  # 캐노피 안쪽에 머무는 수평 도달 거리
+        length = reach / math.sin(tilt)
         direction = (math.sin(tilt) * math.cos(angle), math.sin(tilt) * math.sin(angle), math.cos(tilt))
         start = (x, y, start_h)
         end = tuple(start[i] + direction[i] * length for i in range(3))
